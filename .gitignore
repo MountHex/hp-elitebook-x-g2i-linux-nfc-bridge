@@ -1,0 +1,12 @@
+# Build outputs (do not commit binaries by accident)
+/hp-elitebook-nfc-bridge
+*.o
+*.ko
+*.mod
+*.mod.c
+*.cmd
+*.symvers
+Module.symvers
+modules.order
+.cache/
+.DS_Store

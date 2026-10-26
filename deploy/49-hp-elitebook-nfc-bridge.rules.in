@@ -1,0 +1,10 @@
+// Render __LOGIN_NAME__ for exactly one validated desktop account at installation.
+// This is NOT a general systemd manager privilege grant.
+polkit.addRule(function(action, subject) {
+    if (action.id !== "org.freedesktop.systemd1.manage-units") return;
+    if (subject.user !== "__LOGIN_NAME__") return;
+    if (action.lookup("unit") !== "hp-elitebook-nfc-bridge.service") return;
+    var verb = action.lookup("verb");
+    if (verb !== "start" && verb !== "stop") return;
+    return polkit.Result.YES;
+});

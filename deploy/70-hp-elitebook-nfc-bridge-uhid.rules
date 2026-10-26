@@ -1,0 +1,3 @@
+# Limit /dev/uhid to root and the dedicated bridge service group.
+# Do not add uaccess; no world-writable UHID permissions.
+ACTION=="add|change", KERNEL=="uhid", SUBSYSTEM=="misc", OWNER="root", GROUP="hp-nfc-bridge", MODE="0660"

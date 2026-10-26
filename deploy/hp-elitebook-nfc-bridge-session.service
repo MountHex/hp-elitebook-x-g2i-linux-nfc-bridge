@@ -1,0 +1,16 @@
+[Unit]
+Description=Activate HP EliteBook NFC bridge for this graphical session
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Polkit grants this login user start/stop of this exact system unit only.
+ExecStart=systemctl --system start hp-elitebook-nfc-bridge.service
+ExecStop=systemctl --system stop hp-elitebook-nfc-bridge.service
+TimeoutStartSec=25s
+TimeoutStopSec=25s
+
+[Install]
+WantedBy=graphical-session.target

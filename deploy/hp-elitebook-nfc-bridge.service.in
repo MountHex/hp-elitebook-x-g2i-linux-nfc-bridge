@@ -1,0 +1,32 @@
+[Unit]
+Description=HP EliteBook X G2i Linux NFC Bridge (browser WebAuthn, graphical session)
+# Installed only for one selected login UID; never enable at system boot.
+BindsTo=user@__LOGIN_UID__.service
+After=user@__LOGIN_UID__.service
+StartLimitIntervalSec=300
+StartLimitBurst=3
+ConditionPathExists=/sys/class/nfc/nfc0
+
+[Service]
+Type=simple
+User=hp-nfc-bridge
+Group=hp-nfc-bridge
+ExecStart=stdbuf -oL -eL /usr/local/libexec/hp-elitebook-nfc-bridge/hp-elitebook-nfc-bridge --auto-webauthn-continuous --allow-webauthn-auth-registration
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
+NoNewPrivileges=yes
+UMask=0077
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+RestrictSUIDSGID=yes
+# A recognised NFC polling/discovery failure is fail-closed; no retry storm.
+RestartPreventExitStatus=75
+Restart=on-failure
+RestartSec=10s
+TimeoutStopSec=10s
+KillMode=control-group
+StandardOutput=journal
+StandardError=journal
+
+# Intentionally no [Install] section: graphical-session user-unit activation only.
