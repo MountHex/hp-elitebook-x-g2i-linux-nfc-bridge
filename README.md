@@ -1,43 +1,56 @@
 # HP EliteBook X G2i Linux NFC Bridge
 
-**MountHex** · Independent community project; not affiliated with HP, NXP, Nero Duality or Yubico.
+Use the built-in NFC reader on an HP EliteBook X G2i with an NFC-enabled FIDO2 security key for browser sign-in on Linux.
 
-A source-built Linux bridge that exposes a compatible NFC FIDO2 security key to
-browsers as a temporary virtual HID authenticator. It uses the native Linux NFC
-interface (`nfc0`) and `/dev/uhid`, not a PC/SC reader.
+Linux can communicate with the laptop's NFC reader, but browsers don't normally see it as a FIDO2 authenticator. This project bridges that gap: it talks to the reader through Linux's native NFC interface (`nfc0`) and presents the security key to the browser as a temporary virtual HID device using `/dev/uhid`.
 
-The bridge supports browser WebAuthn authentication and registration, including
-PIN/UV authentication when required. Authenticator PIN changes, resets,
-credential management and non-FIDO applications are not supported. The virtual
-HID device is removed after each authentication activity window.
+It is a userspace bridge, **not an NFC kernel driver** or a PC/SC reader.
 
-## Requirements and compatibility
+## Why this bridge exists
 
-**Hardware tested:** HP EliteBook X G2i, Fedora 45 GNOME, integrated NXP NFC
-controller, NFC YubiKey, Helium browser and GitHub WebAuthn. Successful sign-in
-has been confirmed on this configuration. Hardware validation of the *exact*
-final release build is performed separately from source compilation tests.
+Many existing NFC-to-FIDO2 bridges communicate with NFC readers through **PC/SC** (often via `pcscd`). The HP EliteBook X G2i's built-in NXP reader is instead exposed through **Linux's native NFC subsystem** as `nfc0`, rather than as a PC/SC reader. That means PC/SC-based bridges cannot directly use the laptop's built-in reader.
 
-**Other systems:** The source installer targets systemd-based Linux
-installations with system and user service managers, an active
-`graphical-session.target`, Polkit JavaScript rules, udev and tmpfiles.
-Other distributions, desktops and native NFC controllers are compatibility
-targets, not independently verified configurations.
+This project was built to bridge that gap: it communicates with the native Linux NFC interface and makes an NFC security key available to browsers through a virtual HID device, allowing FIDO2/WebAuthn sign-in without an external PC/SC reader.
 
-The system must already expose a working `nfc0` controller and `/dev/uhid`.
-An HP-specific NXP DKMS driver, if needed, must be installed separately. This
-project does **not** contain or manage kernel drivers, DKMS or Secure Boot keys.
+## Before you start: install the NFC driver first
 
-Build tools: Make, a C23-capable compiler (for example GCC 13+), Linux
-userspace development headers, Python 3 and Bash. The installer also uses
-standard Linux systemd, account-management, SELinux (where present), Polkit,
-udev and tmpfiles utilities. Dependencies are not installed automatically;
-package names vary by distribution.
+**The tested HP EliteBook X G2i needs an HP-specific NXP NFC driver.** Install the modified [`nxp-nci_i2c` DKMS driver](https://github.com/MountHex/hp-elitebook-x-g2i-nxp-nci-dkms) and confirm that the built-in NFC reader works **before** installing this bridge. The standard upstream driver uses a different GPIO mapping on this laptop.
 
-## Install from source
+The driver repository provides the **already-modified source** and [Fedora DKMS installation instructions](https://github.com/MountHex/hp-elitebook-x-g2i-nxp-nci-dkms#installing-on-fedora-new-installation-only). You do not need to patch the source yourself. The driver is a separate project: this bridge does not install or manage kernel modules, DKMS packages or Secure Boot signing keys. If your NFC reader already works, don't replace its driver just to install this bridge.
 
-Inspect and verify the source before running administrator commands.
-From the extracted source directory, in a supported graphical session:
+The installation order is:
+
+1. Follow the driver repository's DKMS installation instructions for your running kernel. With Secure Boot enabled, the module must be signed using a key enrolled on your machine.
+2. Check that the patched driver is installed and that the native NFC reader actually works.
+3. Build and install this bridge.
+
+These read-only commands help check the driver before proceeding:
+
+```bash
+dkms status
+modinfo -n nxp_nci_i2c
+ls -ld /sys/class/nfc/nfc0
+```
+
+On the tested system, `modinfo -n` resolves to the DKMS module under `/lib/modules/.../extra/`. **Seeing `nfc0` alone does not prove the reader is healthy.** The bridge cannot fix a missing or malfunctioning kernel driver.
+
+## Tested setup and requirements
+
+The bridge has been tested on:
+
+- **Laptop:** HP EliteBook X G2i with its integrated NXP NFC controller
+- **Linux:** Fedora 45 with GNOME
+- **Security key:** NFC-capable YubiKey
+- **Browser authentication:** Helium and GitHub WebAuthn sign-in, including the PIN/UV path
+- **Security configuration:** Secure Boot enabled and SELinux Enforcing
+
+Other Linux laptops with a working native NFC controller may be adaptable, but they have **not** been tested or verified here. Likewise, Fedora/GNOME is the verified environment; other Linux distributions and desktop sessions are not currently supported by test evidence.
+
+The installer expects a systemd-based Linux desktop with a running `graphical-session.target`, system and user service managers, Polkit JavaScript rules, udev and tmpfiles. You also need a working `nfc0` reader, `/dev/uhid`, Make, Python 3, Bash, a C23-capable compiler (such as GCC 13 or later) and Linux development headers. Dependencies are not installed automatically.
+
+## Build and install
+
+Once the modified driver is installed and the reader is working, run these commands from this project's source directory:
 
 ```bash
 make
@@ -45,17 +58,15 @@ make test
 sudo make install
 ```
 
-`make` compiles the bridge as a normal user. `make test` runs offline tests
-without accessing NFC hardware. The installer adds the bridge executable,
-restricted service identity if needed, systemd services, Polkit, udev and
-tmpfiles rules, and enables graphical-session activation.
+Build as your **normal user**, not root. `make test` runs offline checks; it does not access the NFC hardware. The installer then sets up the bridge executable, a restricted service account, systemd activation and the required Polkit, udev and tmpfiles configuration.
 
-Only **one bridge** may be installed. To replace a release, uninstall it first
-using its original source directory. There is no in-place upgrade, automatic
-migration or rollback. Keep the source directory for that release's
-uninstaller.
+There is **no in-place upgrade**. If you're replacing an earlier release, uninstall it using that release's original source directory before installing the new one. Keep each installed version's source directory so its uninstaller can check and remove the right files.
 
-## Verify and use
+## Using the bridge
+
+Sign in to a website that supports security keys, choose its usual security-key/WebAuthn option, and hold your NFC key against the laptop's reader when prompted. The bridge presents the key to the browser during authentication and removes the virtual HID device afterwards. It automatically becomes ready for the next attempt after a quiet interval.
+
+To inspect the service and recent logs:
 
 ```bash
 systemctl show hp-elitebook-nfc-bridge.service \
@@ -65,50 +76,24 @@ stat -c '%a %U:%G' /dev/uhid
 sudo journalctl -u hp-elitebook-nfc-bridge.service -n 40 --no-pager
 ```
 
-Use a browser's normal WebAuthn flow and present a compatible NFC security key.
-Confirm sign-in completes before treating an installation as working. The
-bridge waits for another presentation after its quiet/rearm interval.
+The bridge is for browser FIDO2/WebAuthn use. It does **not** provide general PC/SC applications, security-key PIN changes or resets, or credential management.
 
-Do not operate another NFC reader poller against the same controller. If the
-reader or driver hangs, do not repeatedly restart the bridge or unbind/rebind
-the kernel driver.
+**Avoid running another NFC poller against the same controller.** If the reader stops responding, check the logs rather than repeatedly restarting services, reloading the driver or unbinding the NFC hardware. Such recovery attempts can make a hardware/driver fault worse.
 
 ## Uninstall
 
-From the **same version's source directory** used for installation:
+From the **original source directory for the installed version**:
 
 ```bash
 sudo make uninstall
 ```
 
-The uninstaller disables activation, stops the service and removes its
-recorded executable and configuration files. It leaves the service account,
-NFC driver, other system configuration and user data in place. Unexpected
-changes to installed files cause removal to stop for manual inspection.
+This disables the bridge's session activation, stops its service and removes the files recorded for that installation. It does **not** remove the separately installed NFC DKMS driver, the service account or unrelated system configuration. If installed files have changed unexpectedly, the uninstaller stops rather than guessing what to delete.
 
-A failed install or uninstall can leave partially installed files. Check the
-reported failure and affected paths before attempting another operation.
+## Security and source licences
 
-## Security
+The bridge runs as a dedicated non-login `hp-nfc-bridge` account, with only the network administration capability needed for the Linux NFC interface. Polkit limits service start/stop access to the selected desktop user, and `/dev/uhid` is restricted to `root:hp-nfc-bridge` (`0660`). On the tested Fedora system, SELinux remains Enforcing and Secure Boot stays enabled.
 
-The bridge runs as a dedicated non-login `hp-nfc-bridge` user with only
-`CAP_NET_ADMIN` available to its process. Polkit limits start/stop of its
-system service to the selected graphical user. `/dev/uhid` is restricted to
-`root:hp-nfc-bridge` with mode `0660`. On hosts with SELinux, installation
-requires Enforcing and restores file contexts; no change is made to Secure
-Boot or the NFC driver.
+MountHex's original project code is MIT-licensed. The included components derived from **Nero Duality's `pcsc-fido`** retain their Apache-2.0 licence and notices. Yubico's libfido2 was used as a design reference and is not bundled. See `LICENSE`, `LICENSE-SCOPE.md`, `THIRD-PARTY-NOTICES.md` and `UPSTREAM-PROVENANCE.md` for details.
 
-## Source layout and licences
-
-- `Makefile`, `tools/`: build, installation and uninstallation.
-- `deploy/`: systemd, Polkit, udev and tmpfiles templates.
-- Root `.c`/`.h` files: native NFC interface and application policy.
-- `upstream/`: incorporated Nero Duality **pcsc-fido** components.
-- `tests/`: offline source-interface checks.
-
-Project-original contributions are under MIT (`LICENSE` and
-`LICENSE-SCOPE.md`). Incorporated `pcsc-fido` material remains under
-Apache-2.0 with its copyright and NOTICE preserved. Yubico libfido2 was a
-BSD-2-Clause design reference, not a bundled library. See
-`THIRD-PARTY-NOTICES.md` and `UPSTREAM-PROVENANCE.md` for origins,
-modifications and the available source-provenance evidence.
+This is an independent community project, not affiliated with HP, NXP, Nero Duality or Yubico.
